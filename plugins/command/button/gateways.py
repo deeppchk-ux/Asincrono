@@ -1,6 +1,5 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from crateres.textos_after import cmds_texto
 import pyrogram.errors
 
 @Client.on_callback_query(filters.regex(r"^gates$"))
