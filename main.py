@@ -11,7 +11,8 @@ from pyrogram.errors import FloodWait, RPCError
 from asyncio import Queue
 from db.mongo_client import MongoDB
 from db.redis_client import RedisClient
-from srca.configs import padlock, antispam, add_command
+from srca.configs import padlock, antispam
+from plugins.command.start import start_command, cmds_command, start_callback
 
 # Configuración de logging
 logging.basicConfig(
@@ -61,6 +62,14 @@ class SexoBot:
 
     def _register_handlers(self):
         """Registra manejadores de comandos y callbacks."""
+        from pyrogram import filters
+        
+        # Registrar comandos explícitamente
+        self.app.add_handler(filters.command(["start", "iniciar", "partir", "star"])(start_command))
+        self.app.add_handler(filters.command(["cmds", "help", "comandos", "cmd", "pasarelas", "gate", "gates", "gaterways", "gateways"])(cmds_command))
+        self.app.add_handler(filters.regex("^start$")(start_callback))
+        
+        # Registrar manejador de callbacks genérico
         @self.app.on_callback_query()
         async def callback_handler(client: Client, call: CallbackQuery):
             try:
