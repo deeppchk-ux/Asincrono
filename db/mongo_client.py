@@ -3,7 +3,7 @@ import motor.motor_asyncio
 import os
 import datetime
 import asyncio
-from time import time  # Importación añadida
+from time import time
 from dotenv import load_dotenv
 from bson.objectid import ObjectId
 from motor.core import AgnosticClient, AgnosticDatabase
@@ -58,7 +58,7 @@ class MongoDB:
                 tls=True,
                 tlsAllowInvalidCertificates=False
             )
-            self.db = self.client["cluster0"]
+            self.db = self.client["sdkchk"]
             self.users = self.db["usuarios"]
             self.groups = self.db["grupos"]
             self.keys = self.db["keys"]
@@ -85,6 +85,16 @@ class MongoDB:
             self.client = None
             self.db = None
             raise
+
+    async def _connection_monitor(self):
+        """Monitorea la conexión a MongoDB periódicamente."""
+        while True:
+            try:
+                await self.client.admin.command('ping')
+                logger.debug("✅ Conexión a MongoDB activa")
+            except ConnectionFailure as e:
+                logger.error(f"❌ Conexión a MongoDB perdida: {e}", exc_info=True)
+            await asyncio.sleep(900)
 
     async def close(self):
         """Cierra la conexión a MongoDB."""
