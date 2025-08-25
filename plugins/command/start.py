@@ -9,7 +9,11 @@ from pyrogram.errors import FloodWait, RPCError
 import asyncio
 
 # Configuración de logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(), logging.FileHandler('bot.log')]
+)
 logger = logging.getLogger(__name__)
 
 # =========================
@@ -22,26 +26,24 @@ BRAND_HANDLE = "https://t.me/Deep_Chk_CHATT"
 SYMBOL_A = '⏃'
 SYMBOL_B = '➺'
 MX_TZ = pytz.timezone('America/Mexico_City')
-IMAGE_URL = "https://i.ibb.co/N6CKphYT/IMG-20250823-120607-666.jpg"  # Nueva URL de la imagen
+IMAGE_URL = "https://i.ibb.co/N6CKphYT/IMG-20250823-120607-666.jpg"
 
-# Textos por defecto para casos no registrados o baneados
+# Textos por defecto
 REGISTRE_TEXT = "⚠️ Tu cuenta no está registrada. Usa /start para registrarte."
 BAN_TEXT = "🚫 Estás baneado y no puedes usar este bot."
 
-# Función para determinar el saludo según la hora
 def dia():
+    """Determina el saludo según la hora."""
     hour = datetime.now(MX_TZ).hour
-    if hour < 12:
-        return "Buenos días ⛅️"
-    elif 12 <= hour < 17:
-        return "Buenas tardes ☀️"
-    elif 17 <= hour < 19:
-        return "Buenas noches 🌅"
-    else:
-        return "Buenas noches 🌃"
+    return {
+        hour < 12: "Buenos días ⛅️",
+        12 <= hour < 17: "Buenas tardes ☀️",
+        17 <= hour < 19: "Buenas noches 🌅",
+        True: "Buenas noches 🌃"
+    }[True]
 
-# Plantilla para /start
 def start_text(username: str) -> str:
+    """Plantilla para /start."""
     now = datetime.now(MX_TZ)
     time_str = now.strftime("%H:%M")
     saludo = dia()
@@ -56,8 +58,8 @@ def start_text(username: str) -> str:
         f"• <b><a href='{BRAND_HANDLE}'>DeepCHK</a></b>"
     )
 
-# Plantilla para /cmds
 def cmds_text() -> str:
+    """Plantilla para /cmds."""
     return (
         f"<b>{SYMBOL_A} COMANDOS DISPONIBLES</b>\n"
         f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
@@ -68,16 +70,14 @@ def cmds_text() -> str:
         f"• <b><a href='{BRAND_HANDLE}'>DeepCHK</a></b>"
     )
 
-# Botones para el menú principal
 def main_menu_buttons():
+    """Botones para el menú principal."""
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(" Gateways", callback_data="gates"),
             InlineKeyboardButton(" Tools", callback_data="tools")
         ],
-        [
-            InlineKeyboardButton(" Api", callback_data="refes")
-        ]
+        [InlineKeyboardButton(" Api", callback_data="refes")]
     ])
 
 @filters.command(["start", "iniciar", "partir", "star"])
@@ -89,7 +89,7 @@ async def start_command(client: Client, message: Message):
             await message.reply("<b>❌ Error de configuración del bot.</b>", disable_web_page_preview=True)
             return
 
-        if await antispam(5, message, client.redis):  # Antispam de 5 segundos
+        if await antispam(5, message, client.redis):
             return
 
         mongo = client.mongo
@@ -119,16 +119,16 @@ async def start_command(client: Client, message: Message):
                 logger.warning(f"FloodWait detectado en start_command, esperando {e.value} segundos")
                 await asyncio.sleep(e.value)
             except RPCError as e:
-                logger.error(f"Error de Telegram API en start_command (intento {attempt + 1}/3): {e}", exc_info=True)
+                logger.error(f"Error de Telegram API en start_command (intento {attempt + 1}/3): {e}")
                 if attempt == 2:
                     await message.reply("❌ Error al procesar el comando. Inténtalo de nuevo.", disable_web_page_preview=True)
                 await asyncio.sleep(2 ** attempt)
             except Exception as e:
-                logger.error(f"Error inesperado en start_command: {e}", exc_info=True)
+                logger.error(f"Error inesperado en start_command: {e}")
                 await message.reply("❌ Error inesperado al procesar el comando.", disable_web_page_preview=True)
                 return
     except Exception as e:
-        logger.error(f"Error crítico en start_command: {e}", exc_info=True)
+        logger.error(f"Error crítico en start_command: {e}")
         await message.reply("❌ Error crítico al procesar el comando.", disable_web_page_preview=True)
 
 @filters.command(["cmds", "help", "comandos", "cmd", "pasarelas", "gate", "gates", "gaterways", "gateways"])
@@ -140,7 +140,7 @@ async def cmds_command(client: Client, message: Message):
             await message.reply("<b>❌ Error de configuración del bot.</b>", disable_web_page_preview=True)
             return
 
-        if await antispam(5, message, client.redis):  # Antispam de 5 segundos
+        if await antispam(5, message, client.redis):
             return
 
         mongo = client.mongo
@@ -170,16 +170,16 @@ async def cmds_command(client: Client, message: Message):
                 logger.warning(f"FloodWait detectado en cmds_command, esperando {e.value} segundos")
                 await asyncio.sleep(e.value)
             except RPCError as e:
-                logger.error(f"Error de Telegram API en cmds_command (intento {attempt + 1}/3): {e}", exc_info=True)
+                logger.error(f"Error de Telegram API en cmds_command (intento {attempt + 1}/3): {e}")
                 if attempt == 2:
                     await message.reply("❌ Error al procesar el comando. Inténtalo de nuevo.", disable_web_page_preview=True)
                 await asyncio.sleep(2 ** attempt)
             except Exception as e:
-                logger.error(f"Error inesperado en cmds_command: {e}", exc_info=True)
+                logger.error(f"Error inesperado en cmds_command: {e}")
                 await message.reply("❌ Error inesperado al procesar el comando.", disable_web_page_preview=True)
                 return
     except Exception as e:
-        logger.error(f"Error crítico en cmds_command: {e}", exc_info=True)
+        logger.error(f"Error crítico en cmds_command: {e}")
         await message.reply("❌ Error crítico al procesar el comando.", disable_web_page_preview=True)
 
 @filters.regex("^start$")
@@ -191,13 +191,12 @@ async def start_callback(client: Client, callback_query: CallbackQuery):
             await callback_query.answer("❌ Error de configuración del bot.", show_alert=True)
             return
 
-        if not await padlock(callback_query):  # Verificar autorización
+        if not await padlock(callback_query):
             return
 
         for attempt in range(3):
             try:
                 await client.respect_rate_limit()
-                # Enviar un nuevo mensaje con la imagen
                 await client.send_photo(
                     chat_id=callback_query.message.chat.id,
                     photo=IMAGE_URL,
@@ -205,7 +204,6 @@ async def start_callback(client: Client, callback_query: CallbackQuery):
                     reply_markup=main_menu_buttons(),
                     disable_notification=True
                 )
-                # Eliminar el mensaje anterior
                 await callback_query.message.delete()
                 await client.mongo.send_log(f"Callback 'start' procesado por usuario {callback_query.from_user.id}")
                 return
@@ -213,14 +211,14 @@ async def start_callback(client: Client, callback_query: CallbackQuery):
                 logger.warning(f"FloodWait detectado en start_callback, esperando {e.value} segundos")
                 await asyncio.sleep(e.value)
             except RPCError as e:
-                logger.error(f"Error de Telegram API en start_callback (intento {attempt + 1}/3): {e}", exc_info=True)
+                logger.error(f"Error de Telegram API en start_callback (intento {attempt + 1}/3): {e}")
                 if attempt == 2:
                     await callback_query.answer("❌ Error al procesar el botón.", show_alert=True)
                 await asyncio.sleep(2 ** attempt)
             except Exception as e:
-                logger.error(f"Error inesperado en start_callback: {e}", exc_info=True)
+                logger.error(f"Error inesperado en start_callback: {e}")
                 await callback_query.answer("❌ Error inesperado al procesar el botón.", show_alert=True)
                 return
     except Exception as e:
-        logger.error(f"Error crítico en start_callback: {e}", exc_info=True)
+        logger.error(f"Error crítico en start_callback: {e}")
         await callback_query.answer("❌ Error crítico al procesar el botón.", show_alert=True)
