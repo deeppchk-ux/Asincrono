@@ -2,6 +2,8 @@
 import os
 import logging
 import asyncio
+import struct  # Importar struct para manejar excepciones
+from time import time
 from pyrogram import Client
 from pyrogram.errors import FloodWait, AuthKeyInvalid, AuthKeyUnregistered
 from pyrogram.types import CallbackQuery
@@ -27,6 +29,8 @@ class SexoBot:
         self.session_string = os.getenv("SESSION_STRING")
         self.log_group_id = os.getenv("LOG_GROUP_ID")
         self.plugins = {"root": "plugins"}
+        self.rate_limit = 1 / 30  # Límite de 30 solicitudes por segundo
+        self.last_request_time = 0
 
         if not self.session_string:
             raise ValueError("Missing environment variable: SESSION_STRING")
@@ -36,6 +40,14 @@ class SexoBot:
         # Inicializar MongoDB y Redis
         self.mongo = MongoDB()
         self.redis = RedisClient()
+
+    async def respect_rate_limit(self):
+        """Asegura que las solicitudes respeten el límite de tasa de la API de Telegram."""
+        current_time = time()
+        elapsed = current_time - self.last_request_time
+        if elapsed < self.rate_limit:
+            await asyncio.sleep(self.rate_limit - elapsed)
+        self.last_request_time = time()
 
     @retry(
         retry=retry_if_exception_type(FloodWait),
@@ -68,9 +80,10 @@ class SexoBot:
                 workers=16
             )
 
-            # Configurar mongo y redis en el cliente
+            # Configurar mongo, redis y respect_rate_limit en el cliente
             app.mongo = self.mongo
             app.redis = self.redis
+            app.respect_rate_limit = self.respect_rate_limit
 
             async with app:
                 app.add_handler(
