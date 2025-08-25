@@ -1,11 +1,16 @@
 # db/redis_client.py
 import os
 import logging
-from redis.asyncio import Redis
+from redis.asyncio import Redis, ConnectionError
 from dotenv import load_dotenv
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
 # Configuración de logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(), logging.FileHandler('bot.log')]
+)
 logger = logging.getLogger(__name__)
 
 class RedisClient:
@@ -17,17 +22,26 @@ class RedisClient:
             raise ValueError("Missing environment variable: REDIS_URL")
         self.client = None
 
+    @retry(
+        retry=retry_if_exception_type(ConnectionError),
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(2),
+        after=lambda retry_state: logger.warning(f"Retrying Redis connection ({retry_state.attempt_number}/3)")
+    )
     async def initialize(self):
-        """Inicializa la conexión a Redis."""
+        """Inicializa la conexión a Redis con reintentos."""
         try:
             self.client = Redis.from_url(self.redis_url, decode_responses=True)
             await self.client.ping()
             logger.info("✅ Conectado a Redis")
-        except Exception as e:
+        except ConnectionError as e:
             logger.error(f"❌ Error de conexión a Redis: {e}")
             raise
+        except Exception as e:
+            logger.error(f"❌ Error inesperado al conectar a Redis: {e}")
+            raise
 
-    async def get(self, key: str):
+    async def get(self, key: str) -> str:
         """Obtiene un valor de Redis."""
         try:
             return await self.client.get(key)
