@@ -1,13 +1,23 @@
 # srca/configs.py
 import logging
 from time import time
+from functools import lru_cache
 from pyrogram.types import Message, CallbackQuery
 from db.mongo_client import MongoDB
 from db.redis_client import RedisClient
 
 # Configuración de logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(), logging.FileHandler('bot.log')]
+)
 logger = logging.getLogger(__name__)
+
+@lru_cache(maxsize=1000)  # Cache para usuarios frecuentes
+async def query_user_cached(user_id: int, mongo: MongoDB) -> dict:
+    """Consulta un usuario en MongoDB con caché."""
+    return await mongo.query_user(user_id)
 
 async def antispam(tiempo: float, message: Message, redis: RedisClient) -> bool:
     """Verifica si el usuario está en período de enfriamiento."""
@@ -24,7 +34,7 @@ async def antispam(tiempo: float, message: Message, redis: RedisClient) -> bool:
         await redis.set(key, current_time, ex=int(tiempo))
         return False
     except Exception as e:
-        logger.error(f"Error en antispam para user_id={message.from_user.id}: {e}", exc_info=True)
+        logger.error(f"Error en antispam para user_id={message.from_user.id}: {e}")
         return False
 
 async def padlock(message: Message | CallbackQuery) -> bool:
@@ -35,7 +45,7 @@ async def padlock(message: Message | CallbackQuery) -> bool:
             logger.error(f"Cliente no tiene atributo mongo para user_id={user_id}")
             return False
         mongo: MongoDB = message._client.mongo
-        user = await mongo.query_user(user_id)
+        user = await query_user_cached(user_id, mongo)  # Usar caché
         if not user:
             logger.warning(f"Usuario no encontrado: user_id={user_id}")
             return False
@@ -46,5 +56,5 @@ async def padlock(message: Message | CallbackQuery) -> bool:
             logger.warning(f"Usuario no autorizado: user_id={user_id}, role={role}, plan={plan}")
         return authorized
     except Exception as e:
-        logger.error(f"Error en padlock para user_id={user_id}: {e}", exc_info=True)
+        logger.error(f"Error en padlock para user_id={user_id}: {e}")
         return False
