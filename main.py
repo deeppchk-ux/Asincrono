@@ -150,7 +150,7 @@ class SexoBot:
             # Configurar cliente Pyrogram en MongoDB
             self.mongo.set_pyrogram_client(self.app)
             
-            # Iniciar el cliente de Pyrogram
+            # Iniciar el cliente Pyrogram
             try:
                 await self.app.start()
                 self._client_started = True
@@ -162,8 +162,14 @@ class SexoBot:
             # Procesar la cola en segundo plano
             self._tasks.append(asyncio.create_task(self.process_queue()))
             
-            # Mantener el bot corriendo
-            await self.app.idle()
+            # Mantener el bot corriendo usando un bucle de espera
+            try:
+                while True:
+                    await asyncio.sleep(3600)  # Dormir durante 1 hora para mantener el bucle activo
+            except asyncio.CancelledError:
+                logger.info("Bot detenido por cancelación.")
+                raise
+
         except Exception as e:
             logger.error(f"Error al iniciar el bot: {e}", exc_info=True)
             raise
@@ -215,7 +221,10 @@ if __name__ == "__main__":
         for task in tasks:
             if not task.done():
                 task.cancel()
-        loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+        try:
+            loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+        except asyncio.CancelledError:
+            logger.info("Tareas canceladas durante el cierre del bucle")
         if not loop.is_closed():
             loop.run_until_complete(loop.shutdown_asyncgens())
             loop.close()
