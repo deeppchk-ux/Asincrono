@@ -57,7 +57,7 @@ class MongoDB:
                 tls=True,
                 tlsAllowInvalidCertificates=False
             )
-            self.db = self.client["cluster0"]
+            self.db = self.client["sdkchk"]
             self.users = self.db["usuarios"]
             self.groups = self.db["grupos"]
             self.keys = self.db["keys"]
