@@ -71,7 +71,7 @@ class SexoBot:
             try:
                 await self.handle_callback_query(callback_query, task)
             except Exception as e:
-                logger.error(f"Error procesando cola: {e}")
+                logger.error(f"Error procesando cola: {e}", exc_info=True)
             finally:
                 self.command_queue.task_done()
 
@@ -100,19 +100,19 @@ class SexoBot:
                 await self.mongo.send_log(f"Callback procesado para usuario {user_id}")
                 return
             except ValueError as e:
-                logger.error(f"Error en formato de data: {e}")
+                logger.error(f"Error en formato de data: {e}", exc_info=True)
                 await call.answer("❌ Error en el formato del botón.", show_alert=True)
                 return
             except FloodWait as e:
                 logger.warning(f"FloodWait detectado, esperando {e.value} segundos")
                 await asyncio.sleep(e.value)
             except RPCError as e:
-                logger.error(f"Error de Telegram API (intento {attempt + 1}/{self.max_retries}): {e}")
+                logger.error(f"Error de Telegram API (intento {attempt + 1}/{self.max_retries}): {e}", exc_info=True)
                 if attempt == self.max_retries - 1:
                     await call.answer("❌ Error procesando el botón.", show_alert=True)
                 await asyncio.sleep(2 ** attempt)
             except Exception as e:
-                logger.error(f"Error inesperado: {e}")
+                logger.error(f"Error inesperado: {e}", exc_info=True)
                 await call.answer("❌ Error inesperado.", show_alert=True)
                 return
 
@@ -125,7 +125,7 @@ class SexoBot:
             process = await asyncio.create_subprocess_shell(command)
             await process.communicate()
         except Exception as e:
-            logger.warning(f"No se pudo limpiar la terminal: {e}")
+            logger.warning(f"No se pudo limpiar la terminal: {e}", exc_info=True)
 
     async def run(self):
         """Inicia el bot, MongoDB y Redis."""
@@ -137,14 +137,14 @@ class SexoBot:
             try:
                 await self.mongo.initialize()
             except Exception as e:
-                logger.error(f"No se pudo inicializar MongoDB: {e}")
+                logger.error(f"No se pudo inicializar MongoDB: {e}", exc_info=True)
                 raise
             
             # Inicializar Redis
             try:
                 await self.redis.initialize()
             except Exception as e:
-                logger.error(f"No se pudo inicializar Redis: {e}")
+                logger.error(f"No se pudo inicializar Redis: {e}", exc_info=True)
                 raise
             
             # Configurar cliente Pyrogram en MongoDB
@@ -156,7 +156,7 @@ class SexoBot:
                 self._client_started = True
                 logger.info("SexoBot está corriendo!")
             except Exception as e:
-                logger.error(f"No se pudo iniciar el cliente Pyrogram: {e}")
+                logger.error(f"No se pudo iniciar el cliente Pyrogram: {e}", exc_info=True)
                 raise
             
             # Procesar la cola en segundo plano
@@ -165,15 +165,16 @@ class SexoBot:
             # Mantener el bot corriendo
             await self.app.idle()
         except Exception as e:
-            logger.error(f"Error al iniciar el bot: {e}")
+            logger.error(f"Error al iniciar el bot: {e}", exc_info=True)
             raise
         finally:
-            # Cancelar tareas pendientes
-            for task in self._tasks:
+            # Cancelar todas las tareas pendientes
+            tasks = self._tasks + [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            for task in tasks:
                 if not task.done():
                     task.cancel()
             try:
-                await asyncio.gather(*self._tasks, return_exceptions=True)
+                await asyncio.gather(*tasks, return_exceptions=True)
             except asyncio.CancelledError:
                 logger.info("Tareas canceladas durante el cierre")
             
@@ -181,12 +182,12 @@ class SexoBot:
             try:
                 await self.mongo.close()
             except Exception as e:
-                logger.error(f"Error al cerrar MongoDB: {e}")
+                logger.error(f"Error al cerrar MongoDB: {e}", exc_info=True)
             
             try:
                 await self.redis.close()
             except Exception as e:
-                logger.error(f"Error al cerrar Redis: {e}")
+                logger.error(f"Error al cerrar Redis: {e}", exc_info=True)
             
             # Cerrar cliente Pyrogram solo si se inició
             if self._client_started:
@@ -194,16 +195,28 @@ class SexoBot:
                     await self.app.stop()
                     logger.info("SexoBot detenido.")
                 except Exception as e:
-                    logger.error(f"Error al detener el cliente Pyrogram: {e}")
+                    logger.error(f"Error al detener el cliente Pyrogram: {e}", exc_info=True)
             else:
                 logger.info("El cliente Pyrogram no se inició, omitiendo stop.")
 
 # Ejecutar el bot
 if __name__ == "__main__":
     bot = SexoBot()
+    loop = asyncio.get_event_loop()
     try:
-        asyncio.run(bot.run())
+        loop.run_until_complete(bot.run())
     except KeyboardInterrupt:
         logger.info("Bot detenido por el usuario.")
     except Exception as e:
-        logger.error(f"Error crítico al ejecutar el bot: {e}")
+        logger.error(f"Error crítico al ejecutar el bot: {e}", exc_info=True)
+    finally:
+        # Asegurar que todas las tareas se cancelen antes de cerrar el bucle
+        tasks = [t for t in asyncio.all_tasks(loop=loop) if t is not asyncio.current_task(loop=loop)]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+        if not loop.is_closed():
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
+        logger.info("Bucle de eventos cerrado correctamente.")
