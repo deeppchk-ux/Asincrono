@@ -3,6 +3,7 @@ import motor.motor_asyncio
 import os
 import datetime
 import asyncio
+from time import time  # Importación añadida
 from dotenv import load_dotenv
 from bson.objectid import ObjectId
 from motor.core import AgnosticClient, AgnosticDatabase
@@ -57,7 +58,7 @@ class MongoDB:
                 tls=True,
                 tlsAllowInvalidCertificates=False
             )
-            self.db = self.client["sdkchk"]
+            self.db = self.client["cluster0"]
             self.users = self.db["usuarios"]
             self.groups = self.db["grupos"]
             self.keys = self.db["keys"]
@@ -75,12 +76,12 @@ class MongoDB:
                 asyncio.create_task(self._group_expiry_check())
             ]
         except ConnectionFailure as e:
-            logger.error(f"❌ Error de conexión a MongoDB Atlas: {e}")
+            logger.error(f"❌ Error de conexión a MongoDB Atlas: {e}", exc_info=True)
             self.client = None
             self.db = None
             raise
         except Exception as e:
-            logger.error(f"❌ Error inesperado al conectar a MongoDB Atlas: {e}")
+            logger.error(f"❌ Error inesperado al conectar a MongoDB Atlas: {e}", exc_info=True)
             self.client = None
             self.db = None
             raise
@@ -190,16 +191,6 @@ class MongoDB:
         except OperationFailure as e:
             logger.error(f"❌ Error al asegurar rol owner: {e}")
             raise
-
-    async def _connection_monitor(self):
-        """Monitorea la conexión a MongoDB periódicamente."""
-        while True:
-            try:
-                await self.client.admin.command('ping')
-                logger.debug("✅ Conexión a MongoDB activa")
-            except ConnectionFailure as e:
-                logger.error(f"❌ Conexión a MongoDB perdida: {e}")
-            await asyncio.sleep(900)
 
     async def _clean_expired_premium_once(self):
         """Limpia usuarios premium expirados al inicio."""
