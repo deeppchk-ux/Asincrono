@@ -1,3 +1,4 @@
+# main.py
 import asyncio
 import logging
 import os
@@ -6,6 +7,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from pyrogram import Client
 from pyrogram.types import CallbackQuery
+from pyrogram.errors import FloodWait, RPCError
 from asyncio import Queue
 from db.mongo_client import MongoDB
 from db.redis_client import RedisClient
@@ -39,6 +41,8 @@ class SexoBot:
         self.rate_limit = 1 / 30  # Límite de 30 solicitudes por segundo (Telegram API)
         self.last_request_time = 0
         self.max_retries = 3
+        self._client_started = False  # Indicador de estado del cliente
+        self._tasks = []  # Lista para rastrear tareas asíncronas
         
         # Registrar manejadores de comandos
         self._register_handlers()
@@ -53,19 +57,11 @@ class SexoBot:
 
     def _register_handlers(self):
         """Registra manejadores de comandos y callbacks."""
-        @add_command("start")
-        async def start_command(client: Client, message):
-            if not await antispam(5, message):  # Antispam de 5 segundos
-                user_id = message.from_user.id
-                user = await self.mongo.query_user(user_id)
-                if user:
-                    await message.reply(f"¡Bienvenido de vuelta, usuario {user_id}!")
-                else:
-                    await self.mongo.insert_user({"id": user_id, "plan": "free"})
-                    await message.reply("¡Bienvenido al bot! Tu cuenta ha sido registrada.")
-
         @self.app.on_callback_query()
         async def callback_handler(client: Client, call: CallbackQuery):
+            # Verificar autorización antes de encolar
+            if not await padlock(call):
+                return
             await self.command_queue.put((call, None))
 
     async def process_queue(self):
@@ -81,22 +77,19 @@ class SexoBot:
 
     async def handle_callback_query(self, call: CallbackQuery, task: Optional[dict] = None):
         """Maneja CallbackQuery con reintentos y manejo de FloodWait."""
-        if not await padlock(call):  # Verificar si el usuario está autorizado
-            return
-        
         for attempt in range(self.max_retries):
             try:
                 await self.respect_rate_limit()
                 data = call.data.split(":")
-                user_id = int(data[1])
+                user_id = int(data[1]) if len(data) > 1 else call.from_user.id
                 
-                # Ejemplo: Consultar MongoDB para verificar usuario
+                # Consultar usuario en MongoDB
                 user = await self.mongo.query_user(user_id)
                 if not user:
                     await call.answer("Usuario no encontrado.", show_alert=True)
                     return
                 
-                # Ejemplo: Incrementar contador en Redis
+                # Incrementar contador en Redis
                 await self.redis.incr(f"callback_count:{user_id}")
                 count = await self.redis.get(f"callback_count:{user_id}")
                 
@@ -106,21 +99,18 @@ class SexoBot:
                 # Registrar log en MongoDB
                 await self.mongo.send_log(f"Callback procesado para usuario {user_id}")
                 return
-            except asyncio.exceptions.CancelledError:
-                logger.info("Tarea cancelada en handle_callback_query")
-                raise
             except ValueError as e:
                 logger.error(f"Error en formato de data: {e}")
                 await call.answer("❌ Error en el formato del botón.", show_alert=True)
                 return
-            except self.app.FloodWait as e:
+            except FloodWait as e:
                 logger.warning(f"FloodWait detectado, esperando {e.value} segundos")
                 await asyncio.sleep(e.value)
-            except self.app.RPCError as e:
+            except RPCError as e:
                 logger.error(f"Error de Telegram API (intento {attempt + 1}/{self.max_retries}): {e}")
                 if attempt == self.max_retries - 1:
                     await call.answer("❌ Error procesando el botón.", show_alert=True)
-                await asyncio.sleep(2 ** attempt)  # Backoff exponencial
+                await asyncio.sleep(2 ** attempt)
             except Exception as e:
                 logger.error(f"Error inesperado: {e}")
                 await call.answer("❌ Error inesperado.", show_alert=True)
@@ -128,9 +118,14 @@ class SexoBot:
 
     async def clear_terminal(self):
         """Limpia la terminal de manera asíncrona."""
-        command = "cls" if os.name == "nt" else "clear"
-        process = await asyncio.create_subprocess_shell(command)
-        await process.communicate()
+        try:
+            # Establecer TERM por defecto si no está definida
+            os.environ["TERM"] = os.getenv("TERM", "xterm")
+            command = "cls" if os.name == "nt" else "clear"
+            process = await asyncio.create_subprocess_shell(command)
+            await process.communicate()
+        except Exception as e:
+            logger.warning(f"No se pudo limpiar la terminal: {e}")
 
     async def run(self):
         """Inicia el bot, MongoDB y Redis."""
@@ -138,30 +133,77 @@ class SexoBot:
             await self.clear_terminal()
             logger.info("Iniciando SexoBot...")
             
-            # Inicializar MongoDB y Redis
-            await self.mongo.initialize()
-            await self.redis.initialize()
+            # Inicializar MongoDB
+            try:
+                await self.mongo.initialize()
+            except Exception as e:
+                logger.error(f"No se pudo inicializar MongoDB: {e}")
+                raise
+            
+            # Inicializar Redis
+            try:
+                await self.redis.initialize()
+            except Exception as e:
+                logger.error(f"No se pudo inicializar Redis: {e}")
+                raise
+            
+            # Configurar cliente Pyrogram en MongoDB
             self.mongo.set_pyrogram_client(self.app)
             
             # Iniciar el cliente de Pyrogram
-            await self.app.start()
-            logger.info("SexoBot está corriendo!")
+            try:
+                await self.app.start()
+                self._client_started = True
+                logger.info("SexoBot está corriendo!")
+            except Exception as e:
+                logger.error(f"No se pudo iniciar el cliente Pyrogram: {e}")
+                raise
             
             # Procesar la cola en segundo plano
-            asyncio.create_task(self.process_queue())
+            self._tasks.append(asyncio.create_task(self.process_queue()))
             
             # Mantener el bot corriendo
             await self.app.idle()
         except Exception as e:
             logger.error(f"Error al iniciar el bot: {e}")
+            raise
         finally:
+            # Cancelar tareas pendientes
+            for task in self._tasks:
+                if not task.done():
+                    task.cancel()
+            try:
+                await asyncio.gather(*self._tasks, return_exceptions=True)
+            except asyncio.CancelledError:
+                logger.info("Tareas canceladas durante el cierre")
+            
             # Cerrar conexiones
-            await self.mongo.close()
-            await self.redis.close()
-            await self.app.stop()
-            logger.info("SexoBot detenido.")
+            try:
+                await self.mongo.close()
+            except Exception as e:
+                logger.error(f"Error al cerrar MongoDB: {e}")
+            
+            try:
+                await self.redis.close()
+            except Exception as e:
+                logger.error(f"Error al cerrar Redis: {e}")
+            
+            # Cerrar cliente Pyrogram solo si se inició
+            if self._client_started:
+                try:
+                    await self.app.stop()
+                    logger.info("SexoBot detenido.")
+                except Exception as e:
+                    logger.error(f"Error al detener el cliente Pyrogram: {e}")
+            else:
+                logger.info("El cliente Pyrogram no se inició, omitiendo stop.")
 
 # Ejecutar el bot
 if __name__ == "__main__":
     bot = SexoBot()
-    asyncio.run(bot.run())
+    try:
+        asyncio.run(bot.run())
+    except KeyboardInterrupt:
+        logger.info("Bot detenido por el usuario.")
+    except Exception as e:
+        logger.error(f"Error crítico al ejecutar el bot: {e}")
