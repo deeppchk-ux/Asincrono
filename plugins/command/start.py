@@ -93,7 +93,7 @@ async def start_command(client: Client, message: Message, bot_instance):
         if queryU is None:
             await message.reply(REGISTRE_TEXT, disable_web_page_preview=True)
             return
-        if queryU.get('rango') == 'Baneado':
+        if queryU.get('role') == 'Baneado':
             await message.reply(BAN_TEXT, disable_web_page_preview=True)
             return
 
@@ -140,7 +140,7 @@ async def cmds_command(client: Client, message: Message, bot_instance):
         if queryU is None:
             await message.reply(REGISTRE_TEXT, disable_web_page_preview=True)
             return
-        if queryU.get('rango') == 'Baneado':
+        if queryU.get('role') == 'Baneado':
             await message.reply(BAN_TEXT, disable_web_page_preview=True)
             return
 
