@@ -80,7 +80,7 @@ def main_menu_buttons():
         ]
     ])
 
-# Comando /start
+@filters.command(["start", "iniciar", "partir", "star"])
 async def start_command(client: Client, message: Message):
     """Maneja el comando /start."""
     try:
@@ -102,9 +102,9 @@ async def start_command(client: Client, message: Message):
             await message.reply(BAN_TEXT, disable_web_page_preview=True)
             return
 
-        for attempt in range(3):  # Usar max_retries definido en main.py
+        for attempt in range(3):
             try:
-                await client.respect_rate_limit()  # Usar el método del cliente
+                await client.respect_rate_limit()
                 await client.send_photo(
                     chat_id=message.chat.id,
                     photo=IMAGE_URL,
@@ -131,7 +131,7 @@ async def start_command(client: Client, message: Message):
         logger.error(f"Error crítico en start_command: {e}", exc_info=True)
         await message.reply("❌ Error crítico al procesar el comando.", disable_web_page_preview=True)
 
-# Comando /cmds
+@filters.command(["cmds", "help", "comandos", "cmd", "pasarelas", "gate", "gates", "gaterways", "gateways"])
 async def cmds_command(client: Client, message: Message):
     """Maneja el comando /cmds."""
     try:
@@ -153,7 +153,7 @@ async def cmds_command(client: Client, message: Message):
             await message.reply(BAN_TEXT, disable_web_page_preview=True)
             return
 
-        for attempt in range(3):  # Usar max_retries definido en main.py
+        for attempt in range(3):
             try:
                 await client.respect_rate_limit()
                 await client.send_photo(
@@ -182,7 +182,7 @@ async def cmds_command(client: Client, message: Message):
         logger.error(f"Error crítico en cmds_command: {e}", exc_info=True)
         await message.reply("❌ Error crítico al procesar el comando.", disable_web_page_preview=True)
 
-# Callback para "start"
+@filters.regex("^start$")
 async def start_callback(client: Client, callback_query: CallbackQuery):
     """Maneja el callback 'start'."""
     try:
