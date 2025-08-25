@@ -36,9 +36,13 @@ class SexoBot:
         self.mongo = MongoDB()
         self.redis = RedisClient()
         
+        # Configurar mongo y redis en el cliente
+        self.app.mongo = self.mongo
+        self.app.redis = self.redis
+        
         # Cola para manejar comandos y callbacks
         self.command_queue = Queue()
-        self.rate_limit = 1 / 30  # Límite de 30 solicitudes por segundo (Telegram API)
+        self.rate_limit = 1 / 30  # Límite de 30 solicitudes por segundo
         self.last_request_time = 0
         self.max_retries = 3
         self._client_started = False
