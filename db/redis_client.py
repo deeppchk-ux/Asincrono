@@ -1,3 +1,4 @@
+# db/redis_client.py
 import redis.asyncio as redis
 import os
 import logging
@@ -130,5 +131,3 @@ class RedisClient:
         except RedisError as e:
             logger.error(f"❌ Error al incrementar key={key}: {e}")
             raise
-
-# No crear instancia global aquí; instanciar en el código principal si es necesario
