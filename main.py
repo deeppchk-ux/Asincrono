@@ -41,8 +41,8 @@ class SexoBot:
         self.rate_limit = 1 / 30  # Límite de 30 solicitudes por segundo (Telegram API)
         self.last_request_time = 0
         self.max_retries = 3
-        self._client_started = False  # Indicador de estado del cliente
-        self._tasks = []  # Lista para rastrear tareas asíncronas
+        self._client_started = False
+        self._tasks = []
         
         # Registrar manejadores de comandos
         self._register_handlers()
@@ -59,10 +59,14 @@ class SexoBot:
         """Registra manejadores de comandos y callbacks."""
         @self.app.on_callback_query()
         async def callback_handler(client: Client, call: CallbackQuery):
-            # Verificar autorización antes de encolar
-            if not await padlock(call):
-                return
-            await self.command_queue.put((call, None))
+            try:
+                if not await padlock(call):
+                    logger.warning(f"Callback no autorizado para user_id={call.from_user.id}")
+                    return
+                await self.command_queue.put((call, None))
+            except Exception as e:
+                logger.error(f"Error en callback_handler: {e}", exc_info=True)
+                await call.answer("❌ Error procesando el botón.", show_alert=True)
 
     async def process_queue(self):
         """Procesa comandos y callbacks en la cola respetando límites de tasa."""
@@ -71,7 +75,7 @@ class SexoBot:
             try:
                 await self.handle_callback_query(callback_query, task)
             except Exception as e:
-                logger.error(f"Error procesando cola: {e}", exc_info=True)
+                logger.error(f"Error crítico al procesar el comando en process_queue: {e}", exc_info=True)
             finally:
                 self.command_queue.task_done()
 
@@ -112,14 +116,13 @@ class SexoBot:
                     await call.answer("❌ Error procesando el botón.", show_alert=True)
                 await asyncio.sleep(2 ** attempt)
             except Exception as e:
-                logger.error(f"Error inesperado: {e}", exc_info=True)
+                logger.error(f"Error crítico en handle_callback_query: {e}", exc_info=True)
                 await call.answer("❌ Error inesperado.", show_alert=True)
                 return
 
     async def clear_terminal(self):
         """Limpia la terminal de manera asíncrona."""
         try:
-            # Establecer TERM por defecto si no está definida
             os.environ["TERM"] = os.getenv("TERM", "xterm")
             command = "cls" if os.name == "nt" else "clear"
             process = await asyncio.create_subprocess_shell(command)
@@ -162,10 +165,10 @@ class SexoBot:
             # Procesar la cola en segundo plano
             self._tasks.append(asyncio.create_task(self.process_queue()))
             
-            # Mantener el bot corriendo usando un bucle de espera
+            # Mantener el bot corriendo
             try:
                 while True:
-                    await asyncio.sleep(3600)  # Dormir durante 1 hora para mantener el bucle activo
+                    await asyncio.sleep(3600)
             except asyncio.CancelledError:
                 logger.info("Bot detenido por cancelación.")
                 raise
@@ -174,7 +177,6 @@ class SexoBot:
             logger.error(f"Error al iniciar el bot: {e}", exc_info=True)
             raise
         finally:
-            # Cancelar todas las tareas pendientes
             tasks = self._tasks + [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
             for task in tasks:
                 if not task.done():
@@ -184,7 +186,6 @@ class SexoBot:
             except asyncio.CancelledError:
                 logger.info("Tareas canceladas durante el cierre")
             
-            # Cerrar conexiones
             try:
                 await self.mongo.close()
             except Exception as e:
@@ -195,7 +196,6 @@ class SexoBot:
             except Exception as e:
                 logger.error(f"Error al cerrar Redis: {e}", exc_info=True)
             
-            # Cerrar cliente Pyrogram solo si se inició
             if self._client_started:
                 try:
                     await self.app.stop()
@@ -205,7 +205,6 @@ class SexoBot:
             else:
                 logger.info("El cliente Pyrogram no se inició, omitiendo stop.")
 
-# Ejecutar el bot
 if __name__ == "__main__":
     bot = SexoBot()
     loop = asyncio.get_event_loop()
@@ -216,7 +215,6 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error crítico al ejecutar el bot: {e}", exc_info=True)
     finally:
-        # Asegurar que todas las tareas se cancelen antes de cerrar el bucle
         tasks = [t for t in asyncio.all_tasks(loop=loop) if t is not asyncio.current_task(loop=loop)]
         for task in tasks:
             if not task.done():
