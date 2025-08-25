@@ -1,6 +1,6 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from crateres.textos_after import cmds_texto
+
 
 @Client.on_callback_query(filters.regex("^auth$"))
 async def gates(client, callback_query):  # Cambiado a async def, parámetro a callback_query
