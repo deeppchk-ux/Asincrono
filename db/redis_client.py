@@ -2,6 +2,7 @@
 import redis.asyncio as redis
 import os
 import logging
+import asyncio  # Importación explícita
 from urllib.parse import urlparse
 from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
@@ -34,11 +35,11 @@ class RedisClient:
             logger.info("✅ Conectado a Redis")
             self._loop = asyncio.get_event_loop()
         except RedisConnectionError as e:
-            logger.error(f"❌ Error de conexión a Redis: {e}")
+            logger.error(f"❌ Error de conexión a Redis: {e}", exc_info=True)
             self.client = None
             raise
         except Exception as e:
-            logger.error(f"❌ Error inesperado al conectar a Redis: {e}")
+            logger.error(f"❌ Error inesperado al conectar a Redis: {e}", exc_info=True)
             self.client = None
             raise
 
@@ -46,10 +47,13 @@ class RedisClient:
         """Cierra la conexión a Redis."""
         if self.client:
             try:
-                await self.client.aclose()
-                logger.info("✅ Conexión a Redis cerrada")
+                if self._loop and not self._loop.is_closed():
+                    await self.client.aclose()
+                    logger.info("✅ Conexión a Redis cerrada")
+                else:
+                    logger.warning("⚠️ Bucle de eventos cerrado, omitiendo cierre de Redis")
             except Exception as e:
-                logger.error(f"❌ Error al cerrar la conexión a Redis: {e}")
+                logger.error(f"❌ Error al cerrar la conexión a Redis: {e}", exc_info=True)
             finally:
                 self.client = None
 
@@ -72,10 +76,10 @@ class RedisClient:
             logger.debug("✅ Ping exitoso a Redis")
             return True
         except RedisConnectionError as e:
-            logger.error(f"❌ Error al hacer ping a Redis: {e}")
+            logger.error(f"❌ Error al hacer ping a Redis: {e}", exc_info=True)
             raise
         except RedisError as e:
-            logger.error(f"❌ Error de Redis: {e}")
+            logger.error(f"❌ Error de Redis: {e}", exc_info=True)
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
@@ -88,7 +92,7 @@ class RedisClient:
             await self.client.set(key, value, ex=ex)
             logger.info(f"✅ Valor establecido en Redis: key={key} en {asyncio.get_event_loop().time() - start_time:.2f}s")
         except RedisError as e:
-            logger.error(f"❌ Error al establecer key={key}: {e}")
+            logger.error(f"❌ Error al establecer key={key}: {e}", exc_info=True)
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
@@ -102,7 +106,7 @@ class RedisClient:
             logger.info(f"✅ Valor obtenido de Redis: key={key} en {asyncio.get_event_loop().time() - start_time:.2f}s")
             return value
         except RedisError as e:
-            logger.error(f"❌ Error al obtener key={key}: {e}")
+            logger.error(f"❌ Error al obtener key={key}: {e}", exc_info=True)
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
@@ -115,7 +119,7 @@ class RedisClient:
             await self.client.delete(key)
             logger.info(f"✅ Clave eliminada de Redis: key={key} en {asyncio.get_event_loop().time() - start_time:.2f}s")
         except RedisError as e:
-            logger.error(f"❌ Error al eliminar key={key}: {e}")
+            logger.error(f"❌ Error al eliminar key={key}: {e}", exc_info=True)
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
@@ -129,5 +133,5 @@ class RedisClient:
             logger.info(f"✅ Clave incrementada: key={key}, value={value} en {asyncio.get_event_loop().time() - start_time:.2f}s")
             return value
         except RedisError as e:
-            logger.error(f"❌ Error al incrementar key={key}: {e}")
+            logger.error(f"❌ Error al incrementar key={key}: {e}", exc_info=True)
             raise
